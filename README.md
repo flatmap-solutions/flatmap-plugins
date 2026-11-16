@@ -8,6 +8,8 @@ Claude Code plugin marketplace from flatmap-solutions.
 
 Engineering harness for new and existing projects: GitHub repo setup, CI, quality tooling, secrets protection and a test-first agent workflow. Details: [README](flatmap-harness/README.md) · design: [SPEC.md](flatmap-harness/SPEC.md).
 
+New to this? The README's [What it does](flatmap-harness/README.md#what-it-does) section explains it in plain language, for founders, project managers and clients.
+
 | Skill | What it does | Status |
 |---|---|---|
 | `/flatmap-harness:flatmap-repo-forge` | Interviews you, creates a new GitHub repo with the full harness, and sets up the agent workflow. | **v0.1** |
