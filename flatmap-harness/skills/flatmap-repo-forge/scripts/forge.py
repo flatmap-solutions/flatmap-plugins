@@ -61,6 +61,8 @@ SECRET_PATTERNS = [
 ]
 SECRET_EXCEPTIONS = [".env.example"]
 PERSONAL_FILES = [".claude/settings.local.json", ".harness/config.local.json", ".harness/.session.json"]
+# Local working files the harness makes (not secret, never committed).
+LOCAL_WORK = [".harness/.docs-queue.json", ".harness/worktrees/"]
 JUNK_PATTERNS = [".DS_Store", "Icon?", ".idea/", ".vscode/*", "!.vscode/settings.json", "!.vscode/extensions.json"]
 
 # Claude Code deny rules can't express "except .env.example", so `.env.*` is
@@ -73,6 +75,7 @@ def gitignore_secret_lines() -> list[str]:
     lines += SECRET_PATTERNS
     lines += ["!" + e for e in SECRET_EXCEPTIONS]
     lines += ["", "# Personal, per-developer files"] + PERSONAL_FILES
+    lines += ["", "# Harness working files (docs queue, docs worktree)"] + LOCAL_WORK
     lines += ["", "# OS and editor files"] + JUNK_PATTERNS
     return lines
 
@@ -416,6 +419,8 @@ def validate(ans: dict) -> list[str]:
     brain = ans.get("brain") or {}
     if brain.get("enabled") and not brain.get("path"):
         errs.append("brain.enabled needs brain.path")
+    if "docs_wiki" in ans and not isinstance(ans["docs_wiki"], bool):
+        errs.append("docs_wiki must be true (start the wiki now) or false (hold off)")
     lic = ans.get("license", "MIT" if ans.get("audience") == "public" else "none")
     if lic not in ("MIT", "none"):
         errs.append(f"license '{lic}' isn't templated in v{PLUGIN_VERSION} (MIT or none); add other licenses by hand after setup")
@@ -481,6 +486,7 @@ def tokens_for(ans: dict) -> dict:
         "PHASE1_ACCEPTANCE": bullets(p1.get("acceptance")),
         "PHASE1_FILES": bullets(p1.get("files_affected") or ["(the planner fills this in before the build)"]),
         "TEST_GLOBS": ", ".join(f"`{g}`" for g in stack["test_globs"]),
+        "DOCS_WIKI": "on" if ans.get("docs_wiki") else "off (Doc can start one later; ask for `/docs wiki on`)",
     }
     return t
 
@@ -497,6 +503,8 @@ def layers_for(ans: dict) -> list[Path]:
         ls.append(TEMPLATES / "deploy")
     if ans.get("audience") == "public" and ans.get("license", "MIT") == "MIT":
         ls.append(TEMPLATES / "license" / "mit")
+    if ans.get("docs_wiki"):
+        ls.append(TEMPLATES / "docs-wiki")
     return [l for l in ls if l.exists()]
 
 
@@ -553,6 +561,7 @@ def settings_json(ans: dict) -> dict:
         "Bash(git branch:*)", "Bash(git push:*)", "Bash(git fetch:*)", "Bash(git pull:*)",
         "Bash(gh pr create:*)", "Bash(gh pr view:*)", "Bash(gh pr checks:*)", "Bash(gh pr list:*)",
         "Bash(gh run view:*)", "Bash(gh run list:*)",
+        "Bash(gh pr diff:*)", "Bash(git worktree:*)", "Bash(git -C .harness/worktrees/docs:*)",
     ]
     ask = ["Bash(gh pr merge:*)"]
     for v in DEPLOY_ASK.values():
@@ -595,6 +604,7 @@ def config_json(ans: dict, files: dict) -> dict:
         "ui": bool(ans.get("ui")),
         "deploy_target": ans.get("deploy_target") or "none",
         "retry_limit": ans["retry_limit"],
+        "docs_wiki_at_setup": bool(ans.get("docs_wiki")),
         "commands": {k: f"make {k}" for k in ("install", "lint", "fmt", "typecheck", "test", "build")},
         "test_globs": stack["test_globs"],
         "fmt_file": stack["fmt_file"],
@@ -647,6 +657,7 @@ def render_to(ans: dict, dest: Path) -> dict:
     (dest / ".harness").mkdir(exist_ok=True)
     (dest / ".harness" / "config.json").write_text(json.dumps(config_json(ans, checksums), indent=2) + "\n")
     (dest / ".harness" / "state.json").write_text(json.dumps(initial_state(ans), indent=2) + "\n")
+    (dest / ".harness" / "docs.json").write_text(json.dumps({"wiki": bool(ans.get("docs_wiki")), "documented": [], "last_run": None}, indent=2) + "\n")
 
     brain = ans.get("brain") or {}
     if brain.get("enabled"):
@@ -657,7 +668,7 @@ def render_to(ans: dict, dest: Path) -> dict:
     leftovers = [str(p.relative_to(dest)) for p in dest.rglob("*") if p.is_file() and p.suffix in (".md", ".yml", ".yaml", ".json", ".toml", ".ts", ".py", "") and TOKEN_RE.search(p.read_text(errors="ignore"))]
     if leftovers:
         return {"ok": False, "errors": ["unrendered tokens in output"] + leftovers}
-    return {"ok": True, "path": str(dest), "files": sorted(list(files) + [".harness/config.json", ".harness/state.json"])}
+    return {"ok": True, "path": str(dest), "files": sorted(list(files) + [".harness/config.json", ".harness/state.json", ".harness/docs.json"])}
 
 
 def cmd_render(a) -> None:
@@ -870,6 +881,7 @@ AGENT_TOOLS = {
     "tester": {"Read", "Grep", "Glob", "Bash", "Write", "Edit"},
     "builder": {"Read", "Grep", "Glob", "Bash", "Write", "Edit"},
     "reviewer": {"Read", "Grep", "Glob"},
+    "doc": {"Read", "Grep", "Glob", "Bash", "Write", "Edit"},
 }
 
 
@@ -911,7 +923,7 @@ def cmd_check_workflow(a) -> None:
         checks.append({"check": "hooks registered", "ok": need <= events, "detail": ", ".join(sorted(events))})
     except Exception as e:  # noqa: BLE001
         checks.append({"check": "settings.json parses", "ok": False, "detail": str(e)})
-    for skill in ("ship", "workflow"):
+    for skill in ("ship", "workflow", "docs"):
         f = d / ".claude" / "skills" / skill / "SKILL.md"
         fm = frontmatter(f) if f.exists() else {}
         checks.append({"check": f"/{skill} skill", "ok": fm.get("name") == skill and bool(fm.get("description")), "detail": str(f.relative_to(d)) if f.exists() else "missing"})
@@ -923,6 +935,12 @@ def cmd_check_workflow(a) -> None:
     checks.append({"check": "push to main blocked", "ok": code == 2, "detail": tail(text, 2)})
     code, text = run_hook(d, "pre-bash", {"tool_name": "Bash", "tool_input": {"command": "git push -u origin phase/01-x"}})
     checks.append({"check": "push to a branch allowed", "ok": code == 0, "detail": tail(text, 2) or "allowed"})
+    code, text = run_hook(d, "pre-agent", {"tool_name": "Agent", "tool_input": {"subagent_type": "doc"}})
+    checks.append({"check": "Doc waits for a green light", "ok": code == 2, "detail": tail(text, 2)})
+    docs = json.loads((d / ".harness" / "docs.json").read_text()) if (d / ".harness" / "docs.json").exists() else None
+    checks.append({"check": "docs set up", "ok": bool(docs is not None and (d / "docs" / "guide" / "README.md").exists()
+                                                      and (not docs.get("wiki") or (d / "wiki" / "Home.md").exists())),
+                   "detail": f"wiki {'on' if docs and docs.get('wiki') else 'off'}"})
     if state["mode"] == "multi-phase":
         pf = d / "harness" / "phases" / f"{state['phase']}.md"
         checks.append({"check": "phase 01 drafted, awaiting approval", "ok": pf.exists() and state["step"] == "awaiting_phase_approval", "detail": str(pf.relative_to(d))})

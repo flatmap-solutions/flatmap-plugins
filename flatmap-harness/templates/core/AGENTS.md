@@ -47,6 +47,8 @@ This repo uses a test-first workflow with approval steps. The loop is in `harnes
 | `harness/WORKFLOW.md` | The work loop and approval steps |
 | `harness/build-log.md` | What actually happened: commands run and results |
 | `docs/decisions/` | Why we decided things (ADRs) |
+| `docs/guide/` | The guide for non-technical readers: overview, features, runbook, changelog (written by Doc) |
+| `.harness/docs.json` | Docs settings (wiki on/off) and the pull requests already documented |
 | `.harness/state.json` | Where the workflow is now (machine-readable; change it only with the harness command) |
 <!-- forge:multi-phase -->
 | `PLANS.md` | Phase order |
@@ -59,6 +61,7 @@ This repo uses a test-first workflow with approval steps. The loop is in `harnes
 - Write a test for each behavior change.
 - Record facts only in `harness/build-log.md`. Never log planned work as done.
 - Record a material decision as an ADR in `docs/decisions/`.
+- Docs are written after a pull request is merged, on their own `docs/...` branch. Explain every feature in plain words and in technical detail. Code changes don't edit `docs/guide/` or `wiki/`.
 
 ## Safety limits
 

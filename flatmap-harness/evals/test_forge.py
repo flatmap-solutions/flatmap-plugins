@@ -110,7 +110,9 @@ class TestRenderMatrix(Base):
                           "lefthook.yml", ".editorconfig", ".github/workflows/ci.yml", ".github/dependabot.yml",
                           ".github/pull_request_template.md", "harness/WORKFLOW.md", "harness/build-log.md",
                           "docs/decisions/0001-record-architecture-decisions.md", ".claude/settings.json",
-                          ".claude/hooks/harness.py", ".claude/skills/ship/SKILL.md", ".claude/skills/workflow/SKILL.md",
+                          ".claude/hooks/harness.py", ".claude/skills/ship/SKILL.md", ".claude/skills/workflow/SKILL.md", ".claude/skills/docs/SKILL.md",
+                          "docs/guide/README.md", "docs/guide/runbook.md", "docs/guide/changelog.md",
+                          "docs/guide/features/README.md", ".harness/docs.json",
                           ".harness/config.json", ".harness/state.json"] + [f".claude/agents/{n}.md" for n in forge.AGENT_TOOLS]:
                     self.assertIn(f, files)
 
@@ -553,6 +555,90 @@ class TestFullDryRun(Base):
                                    capture_output=True, text=True, timeout=1800)
                 res = json.loads(p.stdout)
                 self.assertTrue(res["ok"], json.dumps(res, indent=2)[-3000:])
+
+
+# ---------------------------------------------------------------------------
+
+
+class TestDocs(StateMachine):
+    """Doc, the writer: green light after a merge, gated otherwise, wiki opt-in."""
+
+    def setUp(self):
+        super().setUp()
+        self.stub = self.tmp / "gh.json"
+        created = json.loads((self.repo / ".harness/config.json").read_text())["created"]
+        self.gh({"merged": [
+            {"number": 1, "title": "Before setup", "headRefName": "x", "mergedAt": "2000-01-01T00:00:00Z"},
+            {"number": 4, "title": "Sales loader", "headRefName": "phase/01-sales", "mergedAt": created},
+            {"number": 5, "title": "Docs: sales", "headRefName": "docs/pr-3", "mergedAt": created},
+            {"number": 6, "title": "Fix totals", "headRefName": "task/fix", "mergedAt": created},
+        ], "open": [{"number": 7, "headRefName": "docs/pr-6"}]})
+
+    def gh(self, data):
+        self.stub.write_text(json.dumps(data))
+
+    def docs(self, *args):
+        r = subprocess.run(["python3", str(self.repo / ".claude/hooks/harness.py"), "docs", *args], capture_output=True, text=True,
+                           cwd=self.repo, env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.repo), "HARNESS_GH_STUB": str(self.stub)})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return json.loads(r.stdout)
+
+    def test_no_green_light_blocks_doc(self):
+        self.assertEqual(self.agent("doc"), 2)
+        self.gh({"merged": [], "open": []})
+        self.assertFalse(self.docs("check")["green_light"])
+        self.assertEqual(self.agent("doc"), 2)
+
+    def test_merged_pr_gives_green_light(self):
+        d = self.docs("check")
+        # #1 predates setup, #5 is a docs PR, #6 is already covered by the open docs PR #7
+        self.assertEqual([p["pr"] for p in d["pending_prs"]], [4])
+        self.assertEqual(d["branch"], "docs/pr-4")
+        self.assertTrue(d["green_light"])
+        self.assertEqual(self.agent("doc"), 0)
+
+    def test_done_records_in_worktree_and_clears_queue(self):
+        self.docs("check")
+        wt = self.tmp / "wt"
+        (wt / ".harness").mkdir(parents=True)
+        (wt / ".harness/docs.json").write_text(json.dumps({"wiki": False, "documented": [2]}))
+        r = self.docs("done", "--root", str(wt), "--prs", "4")
+        self.assertEqual(json.loads((wt / ".harness/docs.json").read_text())["documented"], [2, 4])
+        self.assertEqual(r["still_queued"], {"pending_prs": [], "jobs": []})
+        self.assertEqual(self.agent("doc"), 2)
+
+    def test_doc_never_runs_during_a_working_step(self):
+        self.docs("check")
+        self.user()
+        self.ok("writing_test_plan")
+        self.assertEqual(self.agent("doc"), 2)
+
+    def test_requests_and_wiki_on(self):
+        self.gh({"merged": [], "open": []})
+        self.docs("check")
+        self.assertEqual(self.docs("wiki", "on")["queued"], "wiki-setup")
+        d = self.docs("status")
+        self.assertEqual(d["jobs"], ["wiki-setup"])
+        self.assertEqual(d["branch"], "docs/wiki-setup")
+        self.assertEqual(self.agent("doc"), 0)
+        wt = self.tmp / "wt"
+        (wt / ".harness").mkdir(parents=True)
+        self.docs("done", "--root", str(wt), "--job", "wiki-setup")
+        self.assertTrue(json.loads((wt / ".harness/docs.json").read_text())["wiki"])
+        self.docs("request", "explain the export settings")
+        self.assertEqual(self.docs("status")["jobs"], ["explain the export settings"])
+
+    def test_wiki_layer_follows_interview(self):
+        for wiki in (True, False):
+            with self.subTest(wiki=wiki):
+                dest = self.tmp / f"w{wiki}"
+                render(answers(docs_wiki=wiki), dest)
+                self.assertEqual((dest / "wiki/Home.md").exists(), wiki)
+                self.assertEqual(json.loads((dest / ".harness/docs.json").read_text())["wiki"], wiki)
+                gi = (dest / ".gitignore").read_text()
+                self.assertIn(".harness/worktrees/", gi)
+                self.assertIn(".harness/.docs-queue.json", gi)
+        self.assertIn("docs_wiki must be", " ".join(forge.validate(answers(docs_wiki="yes"))))
 
 
 if __name__ == "__main__":

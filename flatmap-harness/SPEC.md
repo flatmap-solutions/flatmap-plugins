@@ -51,6 +51,7 @@ flatmap-harness/                    # in repo flatmap-solutions/flatmap-plugins 
 │   ├── stacks/{typescript,python}/ # v0.1; go, generic in v0.2
 │   ├── audience/public/            # v0.1 (solo adds nothing); team, client in v0.2
 │   ├── license/mit/
+│   ├── docs-wiki/                  # in-repo wiki skeleton, applied if Q12 = yes (§5.9)
 │   └── deploy/                     # placeholder workflow, applied if a target is named
 └── evals/
     ├── test_forge.py               # deterministic suite (spec 11)
@@ -84,6 +85,7 @@ One question at a time; skip anything already answered in the command args (e.g.
 | 10 | **Do you have a company brain (a knowledge-base folder)? Should it track this project at a high level?** (default yes) | §5.8 |
 | 10a | If yes: path to the brain | where the project entry goes |
 | 11 | **How many times should the builder retry before stopping to ask you?** (recommend 3; allow 1–5) | `retry_limit` (§6) |
+| 12 | **Would this project benefit from a wiki now, or hold off until it's more mature?** (recommend with a reason; default hold off) | `docs_wiki` (§5.9) |
 
 **Repo slug rule:** lowercase, spaces and underscores → hyphens, drop characters other than `a-z`, `0-9`, `-`, `.`; collapse repeated hyphens; trim leading/trailing hyphens and dots. "Acme Client Dashboard" → `acme-client-dashboard`. If you pass a name in the command args (`/flatmap-repo-forge acme-api`), it's treated as the slug and still confirmed at 4a.
 
@@ -92,7 +94,7 @@ One question at a time; skip anything already answered in the command args (e.g.
 **Shorter interview for repeat users:** applies only from the 3rd run onward (the skill has been run more than 2 times).
 - The plugin keeps a small run history: run count plus the answers to the "habit" questions (owner, visibility per audience, deploy target, local folder parent, brain path, retry limit). Never project content.
 - From run 3: a habit question is skipped if the user gave the same answer in every previous run. Skipped answers are shown together once: "Using your usual: owner `flatmap`, private, brain at `…`, retry limit 3. OK, or change one?"
-- Project-specific questions (name, purpose, goals, non-goals, audience, build mode, UI, framework, language) are always asked.
+- Project-specific questions (name, purpose, goals, non-goals, audience, build mode, UI, framework, language, wiki) are always asked.
 - Skipped answers still appear, numbered, in the plan preview, so `change N` works.
 - Storage: the plugin's own persistent data folder (`${CLAUDE_PLUGIN_DATA}`; confirm it exists in the current Claude Code during build, else a dotfile the plugin owns). This is the plugin's data, not user settings; see §1 scope.
 
@@ -215,6 +217,28 @@ Logs the project in the user's company brain **at a high level only**.
 
 **Where the setting lives:** brain path in `.harness/config.local.json` (gitignored), so teammates and clients who clone the repo don't inherit it; for them tracking is simply off. Turning it off later: delete that file.
 
+### 5.9 Docs: Doc, the writer (core + claude)
+
+Doc writes for non-technical readers (clients, managers, operators, new teammates) and keeps a technical layer for developers.
+
+**What it maintains:**
+- `docs/guide/README.md`: the whole project, with `## In plain words` and `## Technical overview`.
+- `docs/guide/features/<feature>.md`: one page per feature (from `_template.md`): in plain words · how to use it · technical details · changes (one line per PR).
+- `docs/guide/runbook.md`: install, run, check health, common problems, where things live, who to ask. Plain action first, then the exact command.
+- `docs/guide/changelog.md`: one plain-language line per merged PR.
+- `wiki/` (only when on): `Home.md`, `index.md`, `glossary.md`, one question-named page per topic, linked to the guide. The wiki answers questions and explains terms; it doesn't copy the guide. It lives in the repo (reviewed through PRs like everything else), so the GitHub wiki stays off.
+
+**Trigger (the green light):**
+- `harness.py advance merged` and the SessionStart hook run `docs check`: merged PRs (via `gh pr list`) minus docs PRs (`docs/*` branches), PRs merged before setup, and PRs already covered (`documented` in `.harness/docs.json` locally or on `origin/main`, or named in an open `docs/pr-N-…` branch). What's left is the green light, cached in `.harness/.docs-queue.json` (gitignored). This also catches merges done in the GitHub UI, at the next session start or merge.
+- The user can queue a job: `/docs wiki on` (`wiki-setup`), `/docs refresh` (`full-refresh`), or `/docs <what>`. Claude never queues one on its own.
+- PreToolUse on Agent blocks `doc` when there's no green light, and during any working step. Docs never move the workflow step.
+
+**How it runs (`/docs`):** `docs check` → `git worktree add -B docs/pr-N… .harness/worktrees/docs origin/main` (a separate worktree, so the committed `state.json` in the main checkout doesn't change) → `doc` agent writes in the worktree → `docs done --root <worktree> --prs … [--job …]` records coverage in the worktree's `docs.json` → commit, push the branch, open a "Docs: …" PR → remove the worktree. The user approves the merge like any other PR. Docs PRs never trigger more docs. At most 10 PRs per docs PR; the rest go next time.
+
+**Working with Builder:** Doc writes words, not code. Docs tooling (a docs site, publishing, generated diagrams) comes back as a `Needs Builder` brief that Claude offers as the next task or phase; Builder builds it through the normal workflow.
+
+**Wiki later:** when the wiki is off and the project has grown (5+ feature pages, 3+ merged phases, repeated questions), Doc recommends turning it on; the user decides.
+
 ## 6. Agents and workflow
 
 | Role | Who | Tools | Writes |
@@ -224,6 +248,7 @@ Logs the project in the user's company brain **at a high level only**.
 | Tester | subagent | read, Bash, write tests | test plan + failing tests (before build); evidence (after) |
 | Builder | subagent (both modes) | read, write, Bash | source code |
 | Reviewer | subagent | read-only | review notes |
+| Doc | subagent, via `/docs`, after a merge | read, Bash, write docs | `docs/guide/`, `wiki/` (on a `docs/` branch) |
 | Release | `/ship` skill, run by the user | — | commits, branch push, PR |
 
 **Multi-phase loop:**
@@ -239,7 +264,7 @@ Build loop (max N runs):
      test or review fail → back to Builder
      pass → user runs /ship → PR → CI → user merges (ask)
 After N failed runs: stop. Report what failed each time and ask the user how to proceed.
-After merge: report "Phase NN merged. Next: phase NN+1 (<name>)." and wait for the user. Never start the next phase on its own.
+After merge: Doc gets the green light and runs /docs (§5.9). Report "Phase NN merged. Next: phase NN+1 (<name>)." and wait for the user. Never start the next phase on its own.
 ```
 
 **Retry limit (N):** same rule in both modes. Set during onboarding (Q11), stored in `.harness/config.json` as `retry_limit`, editable there later. A run = one builder attempt plus its test and review. CI failing after `/ship` counts as a failed run.
@@ -407,6 +432,7 @@ Then run `/flatmap-harness:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 ## 12. Milestones
 
 - **v0.1:** `/flatmap-harness:flatmap-repo-forge` with interview, repo setup and agent workflow config (incl. `/workflow`, `/ship`); core + claude layers, both build modes, TS + Python stacks, solo + public audiences, no UI layer, dry-run + evals. Checksums and `forge:` markers from day one, so v0.3 skills work on v0.1 repos.
+  Doc (writer agent), `/docs`, `docs/guide/` and the optional in-repo wiki (§5.9).
 - **v0.2:** UI layer, team + client audiences, Go + generic stacks.
 - **v0.3:** `/harness-update <single|multi>`, `/harness-add`.
 
@@ -446,3 +472,4 @@ Then run `/flatmap-harness:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 28. Build notes (v0.1): one Python engine (`forge.py`) instead of three shell scripts; npm instead of pnpm for TypeScript; a `Makefile` gives every stack the same commands; single-pass gets an explicit `idle` step and `harness/task.md`; gitleaks and lefthook are preflight prerequisites.
 29. (2026-11-16) No separate `/harness-narrowizer`: `/harness-update` takes a mode (`single` or `multi`) and handles upgrades, downgrades and same-mode updates.
 30. (2026-11-16) Plugin renamed `flatmap` → `flatmap-harness` (folder `flatmap-harness/`), so the `flatmap-plugins` marketplace can hold more plugins, each named `flatmap-<purpose>`. Commands read `/flatmap-harness:<skill>`.
+31. (2026-11-16) Doc, a writer agent, keeps a guide and runbook for non-technical readers, with plain-language and technical explanations of each feature and the whole project. A merged PR gives it the green light (checked after `advance merged` and at session start); its work goes in a separate worktree and its own docs PR. The interview asks whether to start a wiki now or hold off; the wiki lives in the repo (`wiki/`) and can be turned on later with `/docs wiki on`, with Builder making any tooling it needs.

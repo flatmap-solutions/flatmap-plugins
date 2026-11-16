@@ -77,5 +77,6 @@ End with this, in this order:
 - A checklist of every step with ✓ or ✗ (and "not applied (plan limit)" where that applies).
 - Things the user must do, if any (e.g. add deploy secrets, finish a failed step by hand).
 - Multi-phase only: "Phase 01 is drafted and will be shown for your approval first."
+- "Doc, the writer, updates the guide and runbook in `docs/guide/` after every merged pull request." Add: "The wiki is on." or "No wiki yet; ask for `/docs wiki on` when the project is ready for one."
 - "When the new session asks whether to trust the folder, accept it. The harness hooks and permissions load only in a trusted folder. Then say anything (e.g. \"go\") and Claude reports where things stand."
 - **Last line, exactly:** `Start a new Claude Code session in <local path>.`

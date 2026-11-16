@@ -7,6 +7,7 @@ directly to move the workflow between steps:
     python3 .claude/hooks/harness.py status
     python3 .claude/hooks/harness.py advance <step> [--result pass|fail] [--phase ID] [--task TEXT] [--note TEXT]
     python3 .claude/hooks/harness.py brain-sync
+    python3 .claude/hooks/harness.py docs check|status|request "<what>"|wiki on|done --root DIR [--prs N,N] [--job NAME]
 
 State lives in .harness/state.json. Only `advance` may change it; the hooks
 block direct edits. Allowed steps and transitions are in TRANSITIONS below.
@@ -32,8 +33,11 @@ STATE = HARNESS / "state.json"
 CONFIG = HARNESS / "config.json"
 LOCAL = HARNESS / "config.local.json"
 SESSION = HARNESS / ".session.json"
+DOCS = HARNESS / "docs.json"                # committed: wiki on/off, PRs already documented
+DOCS_QUEUE = HARNESS / ".docs-queue.json"   # local: what Doc has the green light for
+DOCS_BATCH = 10                             # most PRs documented in one docs PR
 
-HARNESS_AGENTS = {"planner", "tester", "builder", "reviewer"}
+HARNESS_AGENTS = {"planner", "tester", "builder", "reviewer", "doc"}
 USER_GATED = {"awaiting_phase_approval", "awaiting_test_plan_approval", "awaiting_test_approval",
               "awaiting_merge", "merged", "idle", "stopped_retry_limit"}
 WORKING = {"writing_test_plan", "writing_tests", "building", "testing", "reviewing"}
@@ -333,6 +337,10 @@ def cmd_advance(argv: list[str]) -> None:
     print(f"OK: {frm} -> {to}. {line}\nNext: {todo}")
     if to == "merged":
         brain_sync(quiet=True)
+        d = docs_check()
+        if d["green_light"]:
+            print("Docs: " + docs_line(d) + " Run /docs now: Doc updates the documentation on its own branch "
+                  "and opens a docs pull request. Then carry on with the next action above.")
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +366,12 @@ def hook_session_start() -> None:
     )
     if brain.get("warning"):
         ctx += f"\nCompany brain: {brain['warning']}"
+    d = docs_check()
+    if d["green_light"] and not d["busy"]:
+        ctx += ("\nDocs: " + docs_line(d) + " After telling the user the status, run /docs (Doc writes the docs on its own "
+                "branch and opens a docs pull request), unless the user asks for something else first.")
+    elif d.get("warning"):
+        ctx += f"\nDocs: {d['warning']}"
     emit({
         "systemMessage": f"flatmap harness: {line} Say anything (e.g. \"go\") to continue.",
         "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": ctx},
@@ -429,6 +443,16 @@ def hook_pre_agent() -> None:
         sys.exit(0)
     s = load(STATE)
     if not s:
+        sys.exit(0)
+    if agent == "doc":
+        q = load(DOCS_QUEUE, {}) or {}
+        if s["step"] in WORKING:
+            block(f"Blocked by the harness: Doc doesn't run during the working step '{s['step']}'. Finish the step first; "
+                  "the docs run after it.")
+        if not (q.get("pending_prs") or q.get("jobs")):
+            block("Blocked by the harness: Doc has no green light. Doc runs after a pull request is merged, or when the user "
+                  "asks (`python3 .claude/hooks/harness.py docs request \"<what>\"`). Run "
+                  "`python3 .claude/hooks/harness.py docs check` to look for merged pull requests.")
         sys.exit(0)
     allowed = AGENT_FOR_STEP.get(s["step"], set())
     if agent not in allowed:
@@ -580,6 +604,134 @@ def brain_sync(quiet: bool = False) -> dict:
         return {"ok": False, "warning": f"couldn't write the brain entry: {e}"}
 
 
+
+# ---------------------------------------------------------------------------
+# docs (Doc, the writer): a merged pull request gives Doc the green light
+# ---------------------------------------------------------------------------
+
+
+def gh_json(args: list[str]):
+    """Run `gh <args>` and parse its JSON. HARNESS_GH_STUB (tests) points at a JSON file keyed by --state."""
+    stub = os.environ.get("HARNESS_GH_STUB")
+    if stub:
+        data = load(Path(stub), {}) or {}
+        key = args[args.index("--state") + 1] if "--state" in args else ""
+        return (key in data), data.get(key)
+    try:
+        p = subprocess.run(["gh", *args], cwd=ROOT, capture_output=True, text=True, timeout=30)
+        return p.returncode == 0, json.loads(p.stdout) if p.returncode == 0 else None
+    except Exception:  # noqa: BLE001
+        return False, None
+
+
+def docs_branch_prs(branch: str) -> set[int]:
+    m = re.match(r"^docs/pr-([\d-]+)$", branch or "")
+    return {int(n) for n in m.group(1).split("-") if n} if m else set()
+
+
+def docs_slug(text: str) -> str:
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", text.lower())).strip("-")[:40] or "update"
+
+
+def docs_covered() -> set[int]:
+    """PRs already documented: this checkout, origin/main, and open docs pull requests."""
+    covered = set((load(DOCS, {}) or {}).get("documented", []))
+    try:
+        covered |= set(json.loads(git("show", "origin/main:.harness/docs.json") or "{}").get("documented", []))
+    except Exception:  # noqa: BLE001
+        pass
+    ok, open_prs = gh_json(["pr", "list", "--state", "open", "--limit", "100", "--json", "number,headRefName"])
+    for p in (open_prs or []) if ok else []:
+        covered |= docs_branch_prs(p.get("headRefName", ""))
+    return covered
+
+
+def docs_check(fetch: bool = True) -> dict:
+    cfg, docs, s = load(CONFIG, {}), load(DOCS, {}) or {}, load(STATE, {}) or {}
+    q = load(DOCS_QUEUE, {}) or {}
+    warning = None
+    if fetch:
+        git("fetch", "--quiet", "origin", "main")
+        ok, merged = gh_json(["pr", "list", "--state", "merged", "--base", "main", "--limit", "100",
+                              "--json", "number,title,headRefName,mergedAt"])
+        if ok:
+            covered, created = docs_covered(), cfg.get("created", "")
+            q["pending_prs"] = sorted(
+                ({"pr": p["number"], "title": p.get("title", "")} for p in merged or []
+                 if not p.get("headRefName", "").startswith("docs/") and p["number"] not in covered
+                 and (p.get("mergedAt") or "") >= created),
+                key=lambda x: x["pr"])
+            q["checked"] = now()
+        else:
+            warning = "couldn't reach GitHub to look for merged pull requests (is `gh` signed in?); using the last check."
+    prs, jobs = q.get("pending_prs", [])[:DOCS_BATCH], q.get("jobs", [])
+    try:
+        save(DOCS_QUEUE, q)
+    except Exception:  # noqa: BLE001
+        pass
+    branch = ("docs/pr-" + "-".join(str(p["pr"]) for p in prs)) if prs else ("docs/" + docs_slug(jobs[0]) if jobs else None)
+    return {"ok": True, "green_light": bool(prs or jobs), "busy": s.get("step") in WORKING, "wiki": bool(docs.get("wiki")),
+            "pending_prs": prs, "more_prs_after_this": max(0, len(q.get("pending_prs", [])) - len(prs)),
+            "jobs": jobs, "branch": branch, "warning": warning}
+
+
+def docs_line(d: dict) -> str:
+    parts = []
+    if d["pending_prs"]:
+        parts.append("merged pull request(s) " + ", ".join(f"#{p['pr']}" for p in d["pending_prs"]) + " need documenting")
+    if d["jobs"]:
+        parts.append("requested: " + ", ".join(d["jobs"]))
+    return "Doc has the green light (" + "; ".join(parts) + ")."
+
+
+def cmd_docs(argv: list[str]) -> None:
+    import argparse
+    ap = argparse.ArgumentParser(prog="harness.py docs")
+    ap.add_argument("action", choices=["check", "status", "request", "wiki", "done"])
+    ap.add_argument("what", nargs="?")
+    ap.add_argument("--root", help="docs worktree (for done)")
+    ap.add_argument("--prs", default="", help="comma-separated PR numbers documented (for done)")
+    ap.add_argument("--job", action="append", default=[], help="job finished (for done; repeatable)")
+    a = ap.parse_args(argv)
+    q = load(DOCS_QUEUE, {}) or {}
+
+    if a.action in ("check", "status"):
+        print(json.dumps(docs_check(fetch=a.action == "check"), indent=2)); return
+    if a.action in ("request", "wiki"):
+        if a.action == "wiki":
+            if a.what != "on":
+                print(json.dumps({"ok": False, "error": "use: docs wiki on"})); sys.exit(1)
+            if (load(DOCS, {}) or {}).get("wiki"):
+                print(json.dumps({"ok": True, "note": "the wiki is already on"})); return
+            job = "wiki-setup"
+        else:
+            if not a.what:
+                print(json.dumps({"ok": False, "error": "use: docs request \"<what to document>\""})); sys.exit(1)
+            job = a.what.strip()
+        if job not in q.setdefault("jobs", []):
+            q["jobs"].append(job)
+        save(DOCS_QUEUE, q)
+        print(json.dumps({"ok": True, "queued": job, "next": "Run /docs."})); return
+
+    # done: record coverage in the docs worktree's docs.json, then clear the local queue
+    root = Path(a.root) if a.root else ROOT
+    root = root if root.is_absolute() else (ROOT / root)
+    target = root / ".harness" / "docs.json"
+    d = load(target, {}) or {}
+    prs = sorted({int(n) for n in a.prs.split(",") if n.strip()})
+    d["documented"] = sorted(set(d.get("documented", [])) | set(prs))
+    if "wiki-setup" in a.job:
+        d["wiki"] = True
+    d.setdefault("wiki", False)
+    d["last_run"] = now()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    save(target, d)
+    q["pending_prs"] = [p for p in q.get("pending_prs", []) if p["pr"] not in prs]
+    q["jobs"] = [j for j in q.get("jobs", []) if j not in a.job]
+    save(DOCS_QUEUE, q)
+    print(json.dumps({"ok": True, "docs_json": str(target), "documented": prs, "jobs_done": a.job,
+                      "wiki": d["wiki"], "still_queued": {"pending_prs": q["pending_prs"], "jobs": q["jobs"]}}, indent=2))
+
 # ---------------------------------------------------------------------------
 
 
@@ -598,6 +750,8 @@ def main() -> None:
                           "retry_limit": s.get("retry_limit"), "status": line, "next": todo}, indent=2))
     elif sub == "brain-sync":
         print(json.dumps(brain_sync(), indent=2))
+    elif sub == "docs":
+        cmd_docs(rest)
     else:
         fn = {"session-start": hook_session_start, "user-prompt": hook_user_prompt, "pre-bash": hook_pre_bash,
               "pre-agent": hook_pre_agent, "pre-write": hook_pre_write, "post-edit": hook_post_edit,

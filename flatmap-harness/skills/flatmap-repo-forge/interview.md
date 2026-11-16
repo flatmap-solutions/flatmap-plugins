@@ -12,7 +12,7 @@ After question 3, confirm them together in one message:
 
 > Using your usual: owner `<owner>`, `<visibility>`, deploy `<target>`, folder `<parent>/`, brain `<path or off>`, retry limit `<n>`. OK, or change one?
 
-Questions about the project itself (1, 1a, 2, 3, 6, 6a, 7) are always asked.
+Questions about the project itself (1, 1a, 2, 3, 6, 6a, 7, 12) are always asked.
 
 ## Questions
 
@@ -88,6 +88,11 @@ If yes: "What's the folder path?" Check it exists (`ls`). If it doesn't, ask aga
 "If the code fails its tests or review, how many times should the builder retry before stopping to ask you? I recommend 3 (1 to 5)."
 → `retry_limit` (integer 1-5)
 
+**12. Wiki**
+Recommend one with a one-line reason from the earlier answers. A wiki helps when many people will ask questions about the project (public, client or team audiences, or a long multi-phase build). For a small or early project, hold off: the guide in `docs/guide/` is enough to start.
+"Doc, the project's writer, will keep a plain-language guide and runbook up to date after every merge. Would this project benefit from a wiki too, or hold off until it's more mature? I recommend <now | holding off> because <reason>. Doc can start one later with Builder's help if it needs tooling."
+→ `docs_wiki`: `true` (start it now) | `false` (hold off; default)
+
 **Public only: license and code owners**
 "License: MIT (default) or none?" → `license`: `MIT` | `none`. Other licenses: add by hand after setup.
 Code owners default to `@<owner>` → `codeowners`.
@@ -111,6 +116,7 @@ Code owners default to `@<owner>` → `codeowners`.
   "local_path": "/Users/me/Claude/Projects/acme-client-dashboard",
   "brain": {"enabled": true, "path": "/Users/me/ai-workspace"},
   "retry_limit": 3,
+  "docs_wiki": false,
   "license": "MIT",
   "codeowners": "@flatmap-solutions",
   "phase1": {
