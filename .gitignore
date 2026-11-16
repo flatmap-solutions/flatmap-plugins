@@ -5,4 +5,4 @@ Icon?
 !.env.example
 __pycache__/
 *.pyc
-evals/results/
+**/evals/results/
