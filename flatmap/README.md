@@ -5,8 +5,7 @@
 | Skill | What it does | Status |
 |---|---|---|
 | [`/flatmap:flatmap-repo-forge`](#flatmapflatmap-repo-forge) | New GitHub repo with the full harness and agent workflow. | **v0.1** |
-| `/flatmap:harness-update` | Re-apply the latest harness to a repo it created; upgrade single-pass → multi-phase. | planned (v0.3) |
-| `/flatmap:harness-narrowizer` | Downgrade multi-phase → single-pass, removing only unchanged harness files. | planned (v0.3) |
+| `/flatmap:harness-update <single\|multi>` | Re-apply the latest harness to a repo it created in the given mode: `single` keeps or switches to single-pass (removing only unchanged multi-phase files); `multi` keeps or upgrades to multi-phase. | planned (v0.3) |
 | `/flatmap:harness-add` | Add the harness to an existing repo: detect what's there, merge instead of overwrite. | planned (v0.3) |
 
 Short forms (`/flatmap-repo-forge`, …) work when no other installed plugin uses the same name.

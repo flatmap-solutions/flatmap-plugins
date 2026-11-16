@@ -43,7 +43,6 @@ flatmap/                            # in repo flatmap-solutions/flatmap-plugins 
 │   │       └── forge.py            # the engine: slug, preflight-*, history-*, validate, plan, render,
 │   │                               # verify, git-init, create, github-setup, check-workflow, brain, dry-run
 │   ├── harness-update/             # v0.3
-│   ├── harness-narrowizer/         # v0.3
 │   └── harness-add/                # v0.3
 ├── templates/                      # tool-neutral except the claude/ layer
 │   ├── core/                       # always applied
@@ -384,13 +383,14 @@ Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 
 ## 10. Follow-on skills (v0.3)
 
-- **`/flatmap:harness-update`:** re-apply templates from `.harness/config.json`; also upgrades single-pass → multi-phase.
-- **`/flatmap:harness-narrowizer`:** downgrades multi-phase → single-pass.
-  - Removes only plugin-generated files whose checksum is unchanged; lists edited ones and keeps them unless the user says otherwise.
-  - Strips `forge:multi-phase` marker blocks from `AGENTS.md`/`CLAUDE.md`, leaving hand-written text alone.
-  - Removes multi-phase-only agent instructions, hooks, CI steps and permissions.
-  - Shows the full removal list and waits for a yes; runs on a new branch as one commit, so it can be reverted.
-  - Sets `mode: single-pass` in `.harness/config.json`.
+- **`/flatmap:harness-update <single|multi>`:** re-apply the latest templates from `.harness/config.json` in the mode passed. If the mode matches the repo's current mode, it only updates; otherwise it switches modes.
+  - `multi` on a single-pass repo upgrades it to multi-phase (adds the multi-phase files, marker blocks, agents, hooks and CI steps).
+  - `single` on a multi-phase repo downgrades it to single-pass:
+    - Removes only plugin-generated files whose checksum is unchanged; lists edited ones and keeps them unless the user says otherwise.
+    - Strips `forge:multi-phase` marker blocks from `AGENTS.md`/`CLAUDE.md`, leaving hand-written text alone.
+    - Removes multi-phase-only agent instructions, hooks, CI steps and permissions.
+    - Shows the full removal list and waits for a yes; runs on a new branch as one commit, so it can be reverted.
+  - Either way, sets `mode` in `.harness/config.json` to the mode passed.
 - **`/flatmap:harness-add`:** apply the harness to an existing repo.
 
 ## 11. Testing the plugin
@@ -408,7 +408,7 @@ Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 
 - **v0.1:** `/flatmap:flatmap-repo-forge` with interview, repo setup and agent workflow config (incl. `/workflow`, `/ship`); core + claude layers, both build modes, TS + Python stacks, solo + public audiences, no UI layer, dry-run + evals. Checksums and `forge:` markers from day one, so v0.3 skills work on v0.1 repos.
 - **v0.2:** UI layer, team + client audiences, Go + generic stacks.
-- **v0.3:** `/harness-update`, `/harness-narrowizer`, `/harness-add`.
+- **v0.3:** `/harness-update <single|multi>`, `/harness-add`.
 
 ## 13. Future
 
@@ -424,7 +424,7 @@ Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 6. `AGENTS.md` in every repo as the tool-neutral rules; `CLAUDE.md` imports it. Clients may use Codex, Cursor or Copilot.
 7. Claude-first, with tool-specific parts isolated for a future translate plugin.
 8. Build mode asked in the interview; default multi-phase.
-9. `/harness-narrowizer` for multi-phase → single-pass downgrades.
+9. `/harness-narrowizer` for multi-phase → single-pass downgrades. Superseded by #29.
 10. Tester writes the test plan (and failing tests) before the build; user approves it.
 11. Agents: planner, tester, builder (subagent; see #20), reviewer; `/ship` instead of a release agent.
 12. Gates: push branches and open PRs freely; merges and deploys ask; hook blocks any push to `main`.
@@ -444,3 +444,4 @@ Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 26. Secrets: layered protection in every repo (§5.4a): `.gitignore` patterns, `.env.example`, gitleaks pre-commit and in CI, GitHub secret scanning + push protection where the plan allows (else warn and skip), matching Claude deny list, first-commit check.
 27. Orchestration: the main session is the orchestrator. Workflow state lives in `.harness/state.json` with a fixed step list; hooks read it and block invalid transitions, wrong-step subagent calls and runs past the retry limit.
 28. Build notes (v0.1): one Python engine (`forge.py`) instead of three shell scripts; npm instead of pnpm for TypeScript; a `Makefile` gives every stack the same commands; single-pass gets an explicit `idle` step and `harness/task.md`; gitleaks and lefthook are preflight prerequisites.
+29. (2026-11-16) No separate `/harness-narrowizer`: `/harness-update` takes a mode (`single` or `multi`) and handles upgrades, downgrades and same-mode updates.
