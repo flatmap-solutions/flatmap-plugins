@@ -6,7 +6,7 @@
 
 **Use case:**
 1. User installs the plugin (§9).
-2. User runs `/flatmap:flatmap-repo-forge`, or the short form `/flatmap-repo-forge` when no other plugin uses that name.
+2. User runs `/flatmap-harness:flatmap-repo-forge`, or the short form `/flatmap-repo-forge` when no other plugin uses that name.
 3. The one command does three things, in order:
    - **a. Interview** the user (§4).
    - **b. Set up the repo:** show the plan and wait for a yes, scaffold locally and verify it runs green, create the GitHub repo, push, apply repo settings (§8).
@@ -32,11 +32,11 @@ Stack-agnostic core. Stack, UI, audience and build-mode choices add layers on to
 ## 3. Plugin layout
 
 ```
-flatmap/                            # in repo flatmap-solutions/flatmap-plugins (local: ~/Claude/Projects/flatmap-plugins); plugin name "flatmap" → /flatmap:<skill>
+flatmap-harness/                    # in repo flatmap-solutions/flatmap-plugins (local: ~/Claude/Projects/flatmap-plugins); plugin name "flatmap-harness" → /flatmap-harness:<skill>
 ├── .claude-plugin/
-│   └── plugin.json                 # name: "flatmap", version, description
+│   └── plugin.json                 # name: "flatmap-harness", version, description
 ├── skills/
-│   ├── flatmap-repo-forge/         # → /flatmap:flatmap-repo-forge (short: /flatmap-repo-forge)
+│   ├── flatmap-repo-forge/         # → /flatmap-harness:flatmap-repo-forge (short: /flatmap-repo-forge)
 │   │   ├── SKILL.md                # interview → set up repo → configure workflow
 │   │   ├── interview.md            # question bank + branching rules (tool-neutral)
 │   │   └── scripts/
@@ -59,7 +59,7 @@ flatmap/                            # in repo flatmap-solutions/flatmap-plugins 
 
 **Split of work:** the skill owns judgment (interview, writing prose from answers, explaining the plan). `forge.py` (Python 3.8+, standard library only) owns anything that must be deterministic (copying files, checksums, git and gh calls); every subcommand prints JSON. Templates are plain files with `{{TOKEN}}` placeholders, editable without touching logic. Template mechanics: later layers override earlier files; `*.append` files append to a file; `_tokens/NAME` files define multi-line tokens; `__TOKEN__` in a path is substituted.
 
-**Naming:** the plugin is named `flatmap` so its commands read `/flatmap:<skill>`. The product name stays flatmap-repo-forge (the main skill). Later skills join the same plugin: `/flatmap:harness-update`, etc. A skill directory is enough to create the slash command; no separate `commands/` file.
+**Naming:** the plugin is named `flatmap-harness` so its commands read `/flatmap-harness:<skill>`. The product name stays flatmap-repo-forge (the main skill). Later harness skills join the same plugin: `/flatmap-harness:harness-update`, etc. A skill directory is enough to create the slash command; no separate `commands/` file.
 
 **Translatable by design:** only `skills/*/SKILL.md`, hooks and `templates/claude/` are Claude Code-specific. Everything else stays tool-neutral so a future translate plugin (§13) only rewrites that known set.
 
@@ -372,18 +372,18 @@ Run the security and test reviewers in parallel only when both are read-only. Ne
 
 ```
 /plugin marketplace add flatmap-solutions/flatmap-plugins
-/plugin install flatmap@flatmap-plugins
+/plugin install flatmap-harness@flatmap-plugins
 ```
 
-Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
+Then run `/flatmap-harness:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 
-**Marketplace:** public repo `flatmap-solutions/flatmap-plugins` (MIT). It is both the marketplace (`.claude-plugin/marketplace.json` at the root) and the plugin's source (`flatmap/`). Only the maintainer pushes to it; consumers only install (read). Other plugins, like the future translate plugin, go in their own top-level folders, next to `flatmap/`.
+**Marketplace:** public repo `flatmap-solutions/flatmap-plugins` (MIT). It is both the marketplace (`.claude-plugin/marketplace.json` at the root) and the source of each plugin (this one in `flatmap-harness/`). Only the maintainer pushes to it; consumers only install (read). Other plugins, like the future translate plugin, go in their own top-level folders, next to `flatmap-harness/`, each named `flatmap-<purpose>`.
 
-**Updates:** bump `version` in `plugin.json` and tag a release; users pick it up with `/plugin marketplace update` and reinstall. Generated repos record the plugin version in `.harness/config.json`, so `/flatmap:harness-update` knows what changed.
+**Updates:** bump `version` in `plugin.json` and tag a release; users pick it up with `/plugin marketplace update` and reinstall. Generated repos record the plugin version in `.harness/config.json`, so `/flatmap-harness:harness-update` knows what changed.
 
 ## 10. Follow-on skills (v0.3)
 
-- **`/flatmap:harness-update <single|multi>`:** re-apply the latest templates from `.harness/config.json` in the mode passed. If the mode matches the repo's current mode, it only updates; otherwise it switches modes.
+- **`/flatmap-harness:harness-update <single|multi>`:** re-apply the latest templates from `.harness/config.json` in the mode passed. If the mode matches the repo's current mode, it only updates; otherwise it switches modes.
   - `multi` on a single-pass repo upgrades it to multi-phase (adds the multi-phase files, marker blocks, agents, hooks and CI steps).
   - `single` on a multi-phase repo downgrades it to single-pass:
     - Removes only plugin-generated files whose checksum is unchanged; lists edited ones and keeps them unless the user says otherwise.
@@ -391,7 +391,7 @@ Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
     - Removes multi-phase-only agent instructions, hooks, CI steps and permissions.
     - Shows the full removal list and waits for a yes; runs on a new branch as one commit, so it can be reverted.
   - Either way, sets `mode` in `.harness/config.json` to the mode passed.
-- **`/flatmap:harness-add`:** apply the harness to an existing repo.
+- **`/flatmap-harness:harness-add`:** apply the harness to an existing repo.
 
 ## 11. Testing the plugin
 
@@ -406,7 +406,7 @@ Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 
 ## 12. Milestones
 
-- **v0.1:** `/flatmap:flatmap-repo-forge` with interview, repo setup and agent workflow config (incl. `/workflow`, `/ship`); core + claude layers, both build modes, TS + Python stacks, solo + public audiences, no UI layer, dry-run + evals. Checksums and `forge:` markers from day one, so v0.3 skills work on v0.1 repos.
+- **v0.1:** `/flatmap-harness:flatmap-repo-forge` with interview, repo setup and agent workflow config (incl. `/workflow`, `/ship`); core + claude layers, both build modes, TS + Python stacks, solo + public audiences, no UI layer, dry-run + evals. Checksums and `forge:` markers from day one, so v0.3 skills work on v0.1 repos.
 - **v0.2:** UI layer, team + client audiences, Go + generic stacks.
 - **v0.3:** `/harness-update <single|multi>`, `/harness-add`.
 
@@ -416,7 +416,7 @@ Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 
 ## 14. Decision log (2026-11-16)
 
-1. Product name `flatmap-repo-forge`. Plugin is named `flatmap`; the command is `/flatmap:flatmap-repo-forge` (short: `/flatmap-repo-forge`). One command does interview → repo setup → agent workflow configuration.
+1. Product name `flatmap-repo-forge`. Plugin is named `flatmap` (renamed by #30); the command was `/flatmap:flatmap-repo-forge` (short: `/flatmap-repo-forge`). One command does interview → repo setup → agent workflow configuration.
 2. Distribution: public marketplace repo `flatmap-solutions/flatmap-plugins` from the start (MIT). Maintainer-only pushes; consumers install read-only.
 3. Free-plan branch protection: warn and skip, all audiences.
 4. Company brain: conventions are not pulled from it (they live in templates). Tracking the project in it is optional and on by default (see #16).
@@ -445,3 +445,4 @@ Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 27. Orchestration: the main session is the orchestrator. Workflow state lives in `.harness/state.json` with a fixed step list; hooks read it and block invalid transitions, wrong-step subagent calls and runs past the retry limit.
 28. Build notes (v0.1): one Python engine (`forge.py`) instead of three shell scripts; npm instead of pnpm for TypeScript; a `Makefile` gives every stack the same commands; single-pass gets an explicit `idle` step and `harness/task.md`; gitleaks and lefthook are preflight prerequisites.
 29. (2026-11-16) No separate `/harness-narrowizer`: `/harness-update` takes a mode (`single` or `multi`) and handles upgrades, downgrades and same-mode updates.
+30. (2026-11-16) Plugin renamed `flatmap` → `flatmap-harness` (folder `flatmap-harness/`), so the `flatmap-plugins` marketplace can hold more plugins, each named `flatmap-<purpose>`. Commands read `/flatmap-harness:<skill>`.

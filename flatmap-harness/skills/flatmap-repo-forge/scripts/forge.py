@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """flatmap-repo-forge engine.
 
-Deterministic steps for the /flatmap:flatmap-repo-forge skill. The skill owns the
+Deterministic steps for the /flatmap-harness:flatmap-repo-forge skill. The skill owns the
 interview and judgment; this script owns everything that must be exact: slugs,
 preflight checks, rendering templates, checksums, git, gh calls, verification.
 

@@ -1,18 +1,24 @@
-# flatmap (Claude Code plugin)
+# flatmap-harness (Claude Code plugin)
+
+## Install
+
+```
+/plugin install flatmap-harness --marketplace flatmap-solutions/flatmap-plugins
+```
 
 ## Skills
 
 | Skill | What it does | Status |
 |---|---|---|
-| [`/flatmap:flatmap-repo-forge`](#flatmapflatmap-repo-forge) | New GitHub repo with the full harness and agent workflow. | **v0.1** |
-| `/flatmap:harness-update <single\|multi>` | Re-apply the latest harness to a repo it created in the given mode: `single` keeps or switches to single-pass (removing only unchanged multi-phase files); `multi` keeps or upgrades to multi-phase. | planned (v0.3) |
-| `/flatmap:harness-add` | Add the harness to an existing repo: detect what's there, merge instead of overwrite. | planned (v0.3) |
+| [`/flatmap-harness:flatmap-repo-forge`](#flatmap-harnessflatmap-repo-forge) | New GitHub repo with the full harness and agent workflow. | **v0.1** |
+| `/flatmap-harness:harness-update <single\|multi>` | Re-apply the latest harness to a repo it created in the given mode: `single` keeps or switches to single-pass (removing only unchanged multi-phase files); `multi` keeps or upgrades to multi-phase. | planned (v0.3) |
+| `/flatmap-harness:harness-add` | Add the harness to an existing repo: detect what's there, merge instead of overwrite. | planned (v0.3) |
 
 Short forms (`/flatmap-repo-forge`, …) work when no other installed plugin uses the same name.
 
 Repos the forge creates also get two project commands: `/ship` (branch, checks, commit, push, PR) and `/workflow` (where things stand, and continue).
 
-## `/flatmap:flatmap-repo-forge`
+## `/flatmap-harness:flatmap-repo-forge`
 
 One command that:
 
@@ -22,7 +28,7 @@ One command that:
 
 Then you start a new Claude Code session in the project folder, and the workflow picks up from there.
 
-`/flatmap:flatmap-repo-forge --dry-run` scaffolds into a temp folder and makes no GitHub changes.
+`/flatmap-harness:flatmap-repo-forge --dry-run` scaffolds into a temp folder and makes no GitHub changes.
 
 ### What v0.1 supports
 
@@ -32,7 +38,7 @@ Then you start a new Claude Code session in the project folder, and the workflow
 | Audiences | solo, public | team, client (v0.2) |
 | Build modes | multi-phase, single-pass | |
 | UI layer | — | v0.2 |
-| Existing repos | — | `/flatmap:harness-add` (v0.3) |
+| Existing repos | — | `/flatmap-harness:harness-add` (v0.3) |
 
 ### Prerequisites
 

@@ -1,6 +1,6 @@
 ---
 name: flatmap-repo-forge
-description: Create a new GitHub repo with a full engineering harness - interview the user, scaffold CI, quality tooling, secrets protection and a test-first agent workflow, verify it runs green, create and configure the repo, then hand off to a new session. Use when the user runs /flatmap-repo-forge or /flatmap:flatmap-repo-forge, or asks to "start a new project/repo with the harness". Pass --dry-run to scaffold into a temp folder with no GitHub writes.
+description: Create a new GitHub repo with a full engineering harness - interview the user, scaffold CI, quality tooling, secrets protection and a test-first agent workflow, verify it runs green, create and configure the repo, then hand off to a new session. Use when the user runs /flatmap-repo-forge or /flatmap-harness:flatmap-repo-forge, or asks to "start a new project/repo with the harness". Pass --dry-run to scaffold into a temp folder with no GitHub writes.
 argument-hint: "[repo-name] [--dry-run]"
 ---
 
