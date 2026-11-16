@@ -1,0 +1,13 @@
+{
+  "name": "flatmap-plugins",
+  "owner": {
+    "name": "flatmap-solutions"
+  },
+  "plugins": [
+    {
+      "name": "flatmap",
+      "source": "./plugins/flatmap",
+      "description": "Create a GitHub repo with an engineering harness: interview, repo setup, and a test-first agent workflow."
+    }
+  ]
+}
