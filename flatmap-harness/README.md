@@ -67,8 +67,11 @@ These are enforced by the setup itself, not just written as instructions the AI 
 
 ## Install
 
+Inside Claude Code:
+
 ```
-/plugin install flatmap-harness --marketplace flatmap-solutions/flatmap-plugins
+/plugin marketplace add flatmap-solutions/flatmap-plugins
+/plugin install flatmap-harness@flatmap-plugins
 ```
 
 ## Skills
