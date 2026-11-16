@@ -2,8 +2,12 @@
   "project_name": "Tidy Names",
   "slug": "tidy-names",
   "purpose": "A small CLI that renames photo files to a \"date-place\" pattern.",
-  "success_criteria": ["Renames a folder of 1,000 photos without collisions"],
-  "non_goals": ["No GUI"],
+  "success_criteria": [
+    "Renames a folder of 1,000 photos without collisions"
+  ],
+  "non_goals": [
+    "No GUI"
+  ],
   "audience": "public",
   "mode": "single-pass",
   "owner": "example-owner",
@@ -12,7 +16,10 @@
   "stack": "python",
   "deploy_target": "none",
   "local_path": "/tmp/unused",
-  "brain": {"enabled": false},
+  "brain": {
+    "enabled": false
+  },
   "retry_limit": 2,
-  "license": "MIT"
+  "license": "MIT",
+  "docs_wiki": true
 }

@@ -16,7 +16,7 @@
 
 Short forms (`/flatmap-repo-forge`, …) work when no other installed plugin uses the same name.
 
-Repos the forge creates also get two project commands: `/ship` (branch, checks, commit, push, PR) and `/workflow` (where things stand, and continue).
+Repos the forge creates also get three project commands: `/ship` (branch, checks, commit, push, PR), `/workflow` (where things stand, and continue) and `/docs` (run Doc, the writer).
 
 ## `/flatmap-harness:flatmap-repo-forge`
 
@@ -24,7 +24,7 @@ One command that:
 
 1. **Interviews you** about the project, one question at a time.
 2. **Sets up the repo:** shows the plan and waits for your yes, scaffolds it locally, checks it runs green (lint, typecheck, test, build), then creates the GitHub repo, pushes and applies settings.
-3. **Configures the agent workflow:** planner, tester, builder and reviewer agents, plus hooks that enforce a test-first loop with approval steps.
+3. **Configures the agent workflow:** planner, tester, builder and reviewer agents, plus hooks that enforce a test-first loop with approval steps. Doc, the writer, updates the docs after every merge.
 
 Then you start a new Claude Code session in the project folder, and the workflow picks up from there.
 
@@ -51,6 +51,7 @@ Then you start a new Claude Code session in the project folder, and the workflow
 - CI (lint, typecheck, test, build, gitleaks), Dependabot, PR and issue templates, an ADR
 - Secrets protection: `.gitignore` patterns, `.env.example`, gitleaks before every commit and in CI, a Claude read-deny list, a first-commit check, GitHub push protection where the plan allows it
 - `.harness/state.json` workflow state, enforced by `.claude/hooks/harness.py`
+- Doc, the writer: after every merged pull request, it updates `docs/guide/` (project overview, one page per feature, runbook, changelog) for non-technical readers, with a plain-language and a technical explanation of each feature, and opens a docs pull request. The interview asks whether to start a wiki (`wiki/`) now or later (`/docs wiki on`).
 - Optional: a high-level entry in your company brain (never code)
 
 Full design: [SPEC.md](SPEC.md).
