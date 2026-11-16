@@ -1,0 +1,7 @@
+# Git hooks (installed with `lefthook install`).
+pre-commit:
+  commands:
+    secrets:
+      run: gitleaks protect --staged --redact --no-banner
+    lint:
+      run: make lint

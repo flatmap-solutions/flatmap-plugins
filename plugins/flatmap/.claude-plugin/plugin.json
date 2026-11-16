@@ -1,6 +1,0 @@
-{
-  "name": "flatmap",
-  "version": "0.0.1",
-  "description": "Create a GitHub repo with an engineering harness: interview, repo setup, and a test-first agent workflow.",
-  "license": "MIT"
-}
