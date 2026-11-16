@@ -5,9 +5,9 @@
   },
   "plugins": [
     {
-      "name": "flatmap",
-      "source": "./flatmap",
-      "description": "Engineering harness: /flatmap:flatmap-repo-forge creates a GitHub repo with CI, quality tooling, secrets protection and a test-first agent workflow. More harness skills planned."
+      "name": "flatmap-harness",
+      "source": "./flatmap-harness",
+      "description": "Engineering harness: /flatmap-harness:flatmap-repo-forge creates a GitHub repo with CI, quality tooling, secrets protection and a test-first agent workflow. More harness skills planned."
     }
   ],
   "description": "Claude Code plugins from flatmap-solutions."

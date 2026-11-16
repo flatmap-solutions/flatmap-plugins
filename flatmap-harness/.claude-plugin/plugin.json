@@ -1,0 +1,10 @@
+{
+  "name": "flatmap-harness",
+  "version": "0.1.0",
+  "description": "Engineering harness: /flatmap-harness:flatmap-repo-forge creates a GitHub repo with CI, quality tooling, secrets protection and a test-first agent workflow. More harness skills planned.",
+  "license": "MIT",
+  "author": {
+    "name": "flatmap-solutions"
+  },
+  "repository": "https://github.com/flatmap-solutions/flatmap-plugins"
+}
