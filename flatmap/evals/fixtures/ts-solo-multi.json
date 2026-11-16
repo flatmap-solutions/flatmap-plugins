@@ -1,0 +1,25 @@
+{
+  "project_name": "Acme Client Dashboard",
+  "slug": "acme-client-dashboard",
+  "purpose": "A dashboard that shows Acme's weekly sales in one place.",
+  "success_criteria": ["Sales numbers load in under 2 seconds", "Matches the finance report to the cent"],
+  "non_goals": ["No user accounts in v1"],
+  "audience": "solo",
+  "mode": "multi-phase",
+  "owner": "example-owner",
+  "visibility": "private",
+  "ui": false,
+  "stack": "typescript",
+  "deploy_target": "vercel",
+  "local_path": "/tmp/unused",
+  "brain": {"enabled": false},
+  "retry_limit": 3,
+  "phase1": {
+    "name": "Sales data loader",
+    "objective": "Load weekly sales from the CSV export into typed records.",
+    "in_scope": ["Parse the CSV export", "Reject rows with missing totals"],
+    "out_of_scope": ["Charts", "Live data"],
+    "acceptance": ["A sample export parses into records", "A row with no total is reported, not loaded"],
+    "files_affected": ["src/sales/**"]
+  }
+}

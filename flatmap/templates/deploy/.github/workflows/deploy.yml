@@ -1,0 +1,20 @@
+# Deploy to {{DEPLOY_TARGET}}: PLACEHOLDER, not wired up.
+# flatmap-repo-forge leaves deploys to you. To finish:
+#   1. Add the secrets listed in README.md (Deploy section).
+#   2. Uncomment the workflow below and replace each TODO.
+#   3. Deploys need your approval in Claude Code (they're on the "ask" list).
+#
+# name: deploy
+#
+# on:
+#   push:
+#     branches: [main]
+#
+# jobs:
+#   deploy:
+#     runs-on: ubuntu-latest
+#     environment: production
+#     steps:
+#       - uses: actions/checkout@v4
+#       - run: make install && make build
+#       # TODO: the {{DEPLOY_TARGET}} deploy step goes here.

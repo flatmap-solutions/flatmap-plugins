@@ -1,6 +1,6 @@
 # flatmap-repo-forge: Claude Code plugin spec
 
-**Status:** draft v0.3 · 2026-11-16 · all open questions resolved
+**Status:** v0.1 built · 2026-11-16
 
 ## 1. What it does
 
@@ -32,7 +32,7 @@ Stack-agnostic core. Stack, UI, audience and build-mode choices add layers on to
 ## 3. Plugin layout
 
 ```
-plugins/flatmap/                    # in repo flatmap-solutions/flatmap-plugins; plugin name "flatmap" → /flatmap:<skill>
+flatmap/                            # in repo flatmap-solutions/flatmap-plugins (local: ~/Claude/Projects/flatmap-plugins); plugin name "flatmap" → /flatmap:<skill>
 ├── .claude-plugin/
 │   └── plugin.json                 # name: "flatmap", version, description
 ├── skills/
@@ -40,23 +40,25 @@ plugins/flatmap/                    # in repo flatmap-solutions/flatmap-plugins;
 │   │   ├── SKILL.md                # interview → set up repo → configure workflow
 │   │   ├── interview.md            # question bank + branching rules (tool-neutral)
 │   │   └── scripts/
-│   │       ├── preflight.sh        # `tools`: gh/git + auth scopes; `name`: repo free, plan tier
-│   │       ├── render.sh           # copy layers, substitute {{TOKENS}}, record checksums
-│   │       └── github-setup.sh     # protection/ruleset, labels, repo settings
+│   │       └── forge.py            # the engine: slug, preflight-*, history-*, validate, plan, render,
+│   │                               # verify, git-init, create, github-setup, check-workflow, brain, dry-run
 │   ├── harness-update/             # v0.3
 │   ├── harness-narrowizer/         # v0.3
 │   └── harness-add/                # v0.3
 ├── templates/                      # tool-neutral except the claude/ layer
 │   ├── core/                       # always applied
-│   ├── claude/                     # CLAUDE.md, .claude/ (the only Claude-specific layer)
+│   ├── claude/                     # CLAUDE.md, .claude/ incl. hooks/harness.py (the only Claude-specific layer)
 │   ├── mode/{single-pass,multi-phase}/
-│   ├── stacks/{typescript,python,go,generic}/
-│   ├── ui/                         # applied if frontend = yes
-│   └── audience/{solo,team,client,public}/
-└── evals/                          # claude plugin eval suites
+│   ├── stacks/{typescript,python}/ # v0.1; go, generic in v0.2
+│   ├── audience/public/            # v0.1 (solo adds nothing); team, client in v0.2
+│   ├── license/mit/
+│   └── deploy/                     # placeholder workflow, applied if a target is named
+└── evals/
+    ├── test_forge.py               # deterministic suite (spec 11)
+    └── fixtures/
 ```
 
-**Split of work:** the skill owns judgment (interview, writing prose from answers, explaining the plan). Scripts own anything that must be deterministic (copying files, checksums, gh API calls). Templates are plain files with `{{TOKEN}}` placeholders, editable without touching logic.
+**Split of work:** the skill owns judgment (interview, writing prose from answers, explaining the plan). `forge.py` (Python 3.8+, standard library only) owns anything that must be deterministic (copying files, checksums, git and gh calls); every subcommand prints JSON. Templates are plain files with `{{TOKEN}}` placeholders, editable without touching logic. Template mechanics: later layers override earlier files; `*.append` files append to a file; `_tokens/NAME` files define multi-line tokens; `__TOKEN__` in a path is substituted.
 
 **Naming:** the plugin is named `flatmap` so its commands read `/flatmap:<skill>`. The product name stays flatmap-repo-forge (the main skill). Later skills join the same plugin: `/flatmap:harness-update`, etc. A skill directory is enough to create the slash command; no separate `commands/` file.
 
@@ -152,12 +154,12 @@ Agent instruction files are written in short, imperative sentences, one action e
 
 ### 5.4 Quality tooling (stack)
 - Core: `.editorconfig`, `.gitignore` (stack-merged), `lefthook.yml` (language-neutral pre-commit runner).
-- TypeScript: pnpm, Biome (lint + format), Vitest, `tsc --noEmit`.
+- TypeScript: npm (ships with Node, one less prerequisite), Biome (lint + format), Vitest, `tsc --noEmit`.
 - Python: uv, Ruff (lint + format), pytest, pyright.
 - Go: gofmt, golangci-lint, `go test`.
 - Generic: Makefile with `lint`/`test`/`fmt` targets stubbed and marked TODO.
 
-All stacks expose the same four entry points (`lint`, `fmt`, `test`, `build`) so CI, hooks and `AGENTS.md` stay stack-neutral.
+All stacks expose the same entry points through a `Makefile` (`install`, `lint`, `fmt`, `typecheck`, `test`, `build`, `check`) so CI, hooks and `AGENTS.md` stay stack-neutral.
 
 ### 5.4a Secrets protection (core, every repo)
 
@@ -287,6 +289,7 @@ Single-pass uses `"task"` in place of `"phase"`. `retry_limit` is copied from `c
 | Step | Who acts | Next |
 |---|---|---|
 | `awaiting_phase_approval` (multi-phase only) | user | `writing_test_plan` |
+| `idle` (single-pass only) | user gives a task | `writing_test_plan` (or `building` / `writing_tests` for rework) |
 | `writing_test_plan` | tester | `awaiting_test_plan_approval` |
 | `awaiting_test_plan_approval` | user | `writing_tests` (or back to `writing_test_plan` on changes) |
 | `writing_tests` | tester | `awaiting_test_approval` |
@@ -294,7 +297,7 @@ Single-pass uses `"task"` in place of `"phase"`. `retry_limit` is copied from `c
 | `building` | builder | `testing` (multi-phase) / `reviewing` (single-pass) |
 | `testing` | tester | `reviewing` (multi-phase) / `ready_to_ship` (single-pass); fail → `building` with `run`+1 |
 | `reviewing` | reviewer | `ready_to_ship` (multi-phase) / `testing` (single-pass); fail → `building` with `run`+1 |
-| `ready_to_ship` | user runs `/ship` | `awaiting_merge` |
+| `ready_to_ship` | user runs `/ship` | `awaiting_merge` (records the PR number) |
 | `awaiting_merge` | CI, then user | `merged`; CI fail → `building` with `run`+1 |
 | `merged` | user | multi-phase: `awaiting_phase_approval` for next phase, only when the user says go. Single-pass: idle until the next task |
 | `stopped_retry_limit` | user | whatever the user decides |
@@ -304,7 +307,9 @@ Rework on an existing task enters at `building` (or `writing_tests` if a test mu
 **Enforced by hooks, not just instructions:**
 - A transition not in the table is blocked (PreToolUse on writes to `state.json`).
 - Calling a subagent that doesn't match the step is blocked (e.g. builder when step ≠ `building`; PreToolUse on Agent).
-- `awaiting_*` steps can only be left after the user answers in the session; Claude can't move past them by itself.
+- `awaiting_*`, `idle`, `merged` and `stopped_retry_limit` can only be left after the user sends a message in the session (a UserPromptSubmit hook records the time). Exceptions: `awaiting_merge → merged` is also allowed once `gh pr view` says the PR is merged, and a CI failure (`awaiting_merge → building --result fail`) needs no answer.
+- Moving from `awaiting_test_approval` to `building` is refused while test files have uncommitted changes.
+- The only writer of `state.json` is `python3 .claude/hooks/harness.py advance <step>`; direct Write/Edit and shell writes are blocked.
 - When a fail would make `run` exceed `retry_limit`, the only allowed next step is `stopped_retry_limit`.
 
 **Committed to git:** yes, so state travels with the branch and survives a fresh clone. It changes on the working branch only; `main` holds the state as of the last merge.
@@ -373,7 +378,7 @@ Run the security and test reviewers in parallel only when both are read-only. Ne
 
 Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 
-**Marketplace:** public repo `flatmap-solutions/flatmap-plugins` (MIT). It is both the marketplace (`.claude-plugin/marketplace.json` at the root) and the plugin's source (`plugins/flatmap/`). Only the maintainer pushes to it; consumers only install (read). Other plugins, like the future translate plugin, go under `plugins/`.
+**Marketplace:** public repo `flatmap-solutions/flatmap-plugins` (MIT). It is both the marketplace (`.claude-plugin/marketplace.json` at the root) and the plugin's source (`flatmap/`). Only the maintainer pushes to it; consumers only install (read). Other plugins, like the future translate plugin, go in their own top-level folders, next to `flatmap/`.
 
 **Updates:** bump `version` in `plugin.json` and tag a release; users pick it up with `/plugin marketplace update` and reinstall. Generated repos record the plugin version in `.harness/config.json`, so `/flatmap:harness-update` knows what changed.
 
@@ -390,7 +395,7 @@ Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 
 ## 11. Testing the plugin
 
-- `claude plugin eval` suites in `evals/`, one per combination that matters: {TS, Python, generic} × {UI, no UI} × {solo, public} × {single-pass, multi-phase}, all in dry-run.
+- v0.1: a deterministic suite, `python3 evals/test_forge.py` (add `FORGE_FULL=1` to install dependencies and run each scaffold's checks). It covers {TS, Python} × {solo, public} × {single-pass, multi-phase}. LLM-graded `claude plugin eval` cases for the interview are a later addition.
 - Each eval asserts: expected files exist for the mode, no unrendered `{{TOKEN}}` left, checksums recorded, marker blocks balanced, `lint`/`test` pass in the scaffold, no GitHub calls made.
 - Hook test: a push to `main` is blocked. Workflow test: agents parse, `/workflow` and `/ship` load, phase 01 is drafted in multi-phase, SessionStart reports the right next step.
 - State test: every allowed transition passes; an invalid one (e.g. `awaiting_test_approval` → `building` without an answer, or builder called during `testing`) is blocked; the run after `retry_limit` goes to `stopped_retry_limit`.
@@ -438,3 +443,4 @@ Then run `/flatmap:flatmap-repo-forge` (or `/flatmap-repo-forge`).
 25. Repeat users: from the 3rd run, habit questions with an unchanged answer are skipped and confirmed together. Run history lives in the plugin's data folder.
 26. Secrets: layered protection in every repo (§5.4a): `.gitignore` patterns, `.env.example`, gitleaks pre-commit and in CI, GitHub secret scanning + push protection where the plan allows (else warn and skip), matching Claude deny list, first-commit check.
 27. Orchestration: the main session is the orchestrator. Workflow state lives in `.harness/state.json` with a fixed step list; hooks read it and block invalid transitions, wrong-step subagent calls and runs past the retry limit.
+28. Build notes (v0.1): one Python engine (`forge.py`) instead of three shell scripts; npm instead of pnpm for TypeScript; a `Makefile` gives every stack the same commands; single-pass gets an explicit `idle` step and `harness/task.md`; gitleaks and lefthook are preflight prerequisites.
